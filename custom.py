@@ -4,6 +4,8 @@ import glob
 import os
 import customtkinter
 
+COLORS = {'person': 'blue', 'object': 'green', 'interaction': 'red'}
+
 class LabelTool:
     def __init__(self, master):
         # private variables
@@ -14,6 +16,27 @@ class LabelTool:
         self.image_index = 0
         self.total_images = 0
         self.current_image = None
+
+        # initialize mouse state
+        self.STATE = {
+            'click': 0,
+            'x': 0,
+            'y': 0,
+            'label_type': 'person',
+            'label_tag': ''
+        }
+
+        annotation = {}
+
+        # reference to bbox
+        self.bboxIdList = []
+        self.bboxId = None
+        self.bboxList = []
+        self.bboxTag = []
+
+        # mouse-cursor
+        self.horizontal_line = None
+        self.vertical_line = None
 
         # shortcuts
         self.parent.bind("a", self.prev_image)
@@ -32,13 +55,19 @@ class LabelTool:
         self.left_frame.pack(side="left", fill="both", expand=True)
 
         # Scrollable canvas setup
-        self.canvas = customtkinter.CTkCanvas(self.left_frame)
+        self.canvas = customtkinter.CTkCanvas(self.left_frame, cursor="tcross")
         self.scrollbar_y = customtkinter.CTkScrollbar(self.left_frame, command=self.canvas.yview, orientation="vertical")
         self.scrollbar_x = customtkinter.CTkScrollbar(self.left_frame, command=self.canvas.xview, orientation="horizontal")
         self.canvas.configure(yscrollcommand=self.scrollbar_y.set, xscrollcommand=self.scrollbar_x.set)
         self.scrollbar_y.pack(side="right", fill="y")
         self.scrollbar_x.pack(side="bottom", fill="x")
         self.canvas.pack(side="left", fill="both", expand=True)
+
+        # Display mouse cross
+        self.canvas.bind("<Button-1>", self.mouse_click)
+        self.canvas.bind("<Motion>", self.mouse_move)
+        self.parent.bind("<Escape>", self.cancel_bbox)  # press <Escape> to cancel current bbox
+
 
         # Bind the mouse wheel and Shift+Mouse Wheel
         self.canvas.bind("<MouseWheel>", self.on_vertical_scroll)  # For vertical scrolling
@@ -61,13 +90,13 @@ class LabelTool:
         self.button_load_dir = customtkinter.CTkButton(self.right_frame, text="Load Directory", height=50, width=160, command=self.load_directory)
         self.button_load_dir.pack(pady=(20, 10), padx=10)
 
-        self.button_person = customtkinter.CTkButton(self.right_frame, text="Person  [ P ]", height=70)
+        self.button_person = customtkinter.CTkButton(self.right_frame, text="Person  [ P ]", height=70, command=lambda: self.set_label_type("person"))
         self.button_person.pack(pady=(20, 10), padx=10)
 
-        self.button_object = customtkinter.CTkButton(self.right_frame, text="Object  [ O ]", fg_color="green", hover_color="dark green", height=70)
+        self.button_object = customtkinter.CTkButton(self.right_frame, text="Object  [ O ]", fg_color="green", hover_color="dark green", height=70, command=lambda: self.set_label_type("object"))
         self.button_object.pack(pady=10, padx=10)
 
-        self.button_interaction = customtkinter.CTkButton(self.right_frame, text="Interaction  [ I ]", fg_color="orange", hover_color="dark orange", height=70)
+        self.button_interaction = customtkinter.CTkButton(self.right_frame, text="Interaction  [ I ]", fg_color="orange", hover_color="dark orange", height=70, command=lambda: self.set_label_type("interaction"))
         self.button_interaction.pack(pady=10, padx=10)
 
         self.button_reset = customtkinter.CTkButton(self.right_frame, text="Reset  [ R ]", fg_color="red", hover_color="dark red", height=70)
@@ -93,6 +122,66 @@ class LabelTool:
 
     def get_checkbox_state(self):
         print(self.checkbox_var.get())
+
+    def set_label_type(self, label_type):
+        self.STATE['label_type'] = label_type
+
+    def mouse_click(self, event=None):
+        x_offset = int(self.canvas.canvasx(event.x))
+        y_offset = int(self.canvas.canvasy(event.y))
+
+        if self.STATE['click'] == 0:
+            # Start a new bounding box
+            self.STATE['x'], self.STATE['y'] = x_offset, y_offset
+            self.STATE['click'] = 1
+        else:
+            # Finalize the bounding box
+            x1, x2 = min(self.STATE['x'], x_offset), max(self.STATE['x'], x_offset)
+            y1, y2 = min(self.STATE['y'], y_offset), max(self.STATE['y'], y_offset)
+            bbox_id, corner_ids = self.draw_bbox(x1, y1, x2, y2, self.STATE['label_type'])
+
+            # Save the bounding box and its corner IDs
+            self.bboxList.append((x1, y1, x2, y2))
+            self.bboxTag.append(self.STATE['label_tag'])  # Save the label type
+            self.bboxIdList.append((bbox_id, corner_ids))  # Save both bbox and corners
+            self.STATE['click'] = 0
+            self.bboxId = None  # Reset the temporary bbox
+
+            # Show the pop-up for label selection
+            # self.show_label_selection_popup()
+
+    def mouse_move(self, event=None):
+        # Calculate the scroll offset
+        x_offset = self.canvas.canvasx(event.x)
+        y_offset = self.canvas.canvasy(event.y)
+
+        if not self.current_image:
+            return
+
+        self.draw_cursor(x_offset, y_offset)
+
+        # Update bounding box preview
+        if self.STATE['click'] == 1:
+            # Remove only the temporary bbox and its corners
+            if self.bboxId:
+                self.canvas.delete(self.bboxId)
+            if hasattr(self, 'tempCornerIds') and self.tempCornerIds:
+                for corner_id in self.tempCornerIds:
+                    self.canvas.delete(corner_id)
+
+            # Use draw_bbox to create the temporary bbox and corners
+            self.bboxId, self.tempCornerIds = self.draw_bbox(
+                self.STATE['x'], self.STATE['y'], x_offset, y_offset, self.STATE['label_type']
+            )
+
+    def cancel_bbox(self, event=None):
+        if self.STATE['click'] == 0:
+            return
+
+        if self.bboxId:
+            self.canvas.delete(self.bboxId)
+            self.bboxId = None
+            self.STATE['click'] = 0
 
     def update_canvas(self, event=None):
         self.canvas.coords(
@@ -162,6 +251,42 @@ class LabelTool:
 
     def update_image_index_label(self):
         self.image_index_label.configure(text=f"{self.image_index} / {self.total_images}")
+
+    def draw_cursor(self, x, y):
+        if self.horizontal_line:
+            self.canvas.delete(self.horizontal_line)
+        self.horizontal_line = self.canvas.create_line(0, y, self.current_image.width(), y, width=2)
+
+        # Update vertical line
+        if self.vertical_line:
+            self.canvas.delete(self.vertical_line)
+        self.vertical_line = self.canvas.create_line(x, 0, x, self.current_image.height(), width=2)
+
+    def draw_bbox(self, x1, y1, x2, y2, label_type):
+        # Draw the main bounding box
+        bbox_id = self.canvas.create_rectangle(
+            x1, y1, x2, y2,
+            width=2,
+            outline=COLORS[label_type]
+        )
+
+        # Add red rectangles at the corners
+        corner_size = 5  # Size of the corner rectangles
+        corner_ids = []
+        for x, y in [
+            (x1, y1),
+            (x1, y2),
+            (x2, y1),
+            (x2, y2)
+        ]:
+            corner_id = self.canvas.create_rectangle(
+                x - corner_size, y - corner_size, x + corner_size, y + corner_size,
+                fill='red', outline='red'
+            )
+            corner_ids.append(corner_id)
+
+        return bbox_id, corner_ids
+
 
 if __name__ == '__main__':
     customtkinter.set_appearance_mode('light')
