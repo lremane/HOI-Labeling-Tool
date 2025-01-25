@@ -2,7 +2,6 @@ from PIL import Image, ImageTk
 import itertools
 import glob
 import os
-
 import customtkinter
 
 class LabelTool:
@@ -16,14 +15,9 @@ class LabelTool:
         self.total_images = 0
         self.current_image = None
 
-
         # shortcuts
         self.parent.bind("a", self.prev_image)
         self.parent.bind("f", self.next_image)
-
-
-
-
 
         # Set up the main frame
         self.parent.title('HOI Labeling Tool')
@@ -37,9 +31,28 @@ class LabelTool:
         self.left_frame = customtkinter.CTkFrame(self.main_frame, width=600, height=500)
         self.left_frame.pack(side="left", fill="both", expand=True)
 
-        # Add a placeholder label in the left frame (you can update it with images)
-        self.image_label = customtkinter.CTkLabel(self.left_frame, text="Image Display Area", anchor="center", fg_color="white")
-        self.image_label.pack(fill="both", expand=True)
+        # Scrollable canvas setup
+        self.canvas = customtkinter.CTkCanvas(self.left_frame)
+        self.scrollbar_y = customtkinter.CTkScrollbar(self.left_frame, command=self.canvas.yview, orientation="vertical")
+        self.scrollbar_x = customtkinter.CTkScrollbar(self.left_frame, command=self.canvas.xview, orientation="horizontal")
+        self.canvas.configure(yscrollcommand=self.scrollbar_y.set, xscrollcommand=self.scrollbar_x.set)
+        self.scrollbar_y.pack(side="right", fill="y")
+        self.scrollbar_x.pack(side="bottom", fill="x")
+        self.canvas.pack(side="left", fill="both", expand=True)
+
+        # Bind the mouse wheel and Shift+Mouse Wheel
+        self.canvas.bind("<MouseWheel>", self.on_vertical_scroll)  # For vertical scrolling
+        self.canvas.bind("<Shift-MouseWheel>", self.on_horizontal_scroll)  # For horizontal scrolling
+
+        # For macOS/Linux compatibility (mouse scroll up/down)
+        self.canvas.bind("<Shift-Button-4>", lambda e: self.canvas.xview_scroll(-1, "units"))
+        self.canvas.bind("<Shift-Button-5>", lambda e: self.canvas.xview_scroll(1, "units"))
+        self.canvas.bind("<Button-4>", lambda e: self.canvas.yview_scroll(-1, "units"))
+        self.canvas.bind("<Button-5>", lambda e: self.canvas.yview_scroll(1, "units"))
+
+
+        self.placeholder_text = self.canvas.create_text(0, 0, text="Image Display Area", font=("TkDefaultFont", 24), anchor="center")
+        self.canvas.bind("<Configure>", self.update_canvas)
 
         # Labeling Buttons
         self.right_frame = customtkinter.CTkScrollableFrame(self.main_frame, width=300)
@@ -81,6 +94,20 @@ class LabelTool:
     def get_checkbox_state(self):
         print(self.checkbox_var.get())
 
+    def update_canvas(self, event=None):
+        self.canvas.coords(
+            self.placeholder_text,
+            self.canvas.winfo_width() // 2,
+            self.canvas.winfo_height() // 2
+        )
+        self.canvas.configure(scrollregion=self.canvas.bbox("all"))
+
+    def on_vertical_scroll(self, event):
+        self.canvas.yview_scroll(-1 * (event.delta // 120), "units")
+
+    def on_horizontal_scroll(self, event):
+        self.canvas.xview_scroll(-1 * (event.delta // 120), "units")
+
     def load_directory(self):
         self.image_directory = customtkinter.filedialog.askdirectory(title="Select Directory")
 
@@ -107,13 +134,19 @@ class LabelTool:
         image = Image.open(image_path)
         self.current_image = ImageTk.PhotoImage(image)
 
-        self.image_label.configure(image=self.current_image, text="")
-        self.update_image_index_label()
+        # Clear existing canvas items
+        self.canvas.delete("all")
 
+        # Add image to canvas
+        self.canvas.update_idletasks()
+        self.canvas.create_image(0, 0, anchor="nw", image=self.current_image)
+        self.canvas.config(scrollregion=self.canvas.bbox("all"))
+
+        self.update_image_index_label()
 
     def prev_image(self, event=None):
         # self.save_image()
-        if self.image_index == 0:
+        if self.image_index <= 1:
             return
 
         self.image_index -= 1
