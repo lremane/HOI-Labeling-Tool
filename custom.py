@@ -17,6 +17,26 @@ class LabelTool:
         self.total_images = 0
         self.current_image = None
 
+        self.object_options = (
+                ['cell phone'] +
+                ['cup', 'bottle'] +
+                ['couch'] +
+                ['apple'] +
+                ['book'] +
+                ['laptop']
+        )
+        self.object_options.sort()
+
+        self.connection_options = (['no_interaction', 'hold'] +
+                                  ['talk_on', 'text_on'] +
+                                  ['drink_with'] +
+                                  ['lie_on', 'sit_on'] +
+                                  ['eat'] +
+                                  ['read'] +
+                                  ['type_on']
+        )
+        self.connection_options.sort()
+
         # initialize mouse state
         self.STATE = {
             'click': 0,
@@ -29,10 +49,10 @@ class LabelTool:
         annotation = {}
 
         # reference to bbox
-        self.bboxIdList = []
-        self.bboxId = None
-        self.bboxList = []
-        self.bboxTag = []
+        self.bbox_ids = []
+        self.bbox_id = None
+        self.bbox_list = []
+        self.bbox_tag = []
 
         # mouse-cursor
         self.horizontal_line = None
@@ -125,6 +145,10 @@ class LabelTool:
 
     def set_label_type(self, label_type):
         self.STATE['label_type'] = label_type
+        if label_type == "object":
+            return
+
+        self.STATE['label_tag'] = label_type
 
     def mouse_click(self, event=None):
         x_offset = int(self.canvas.canvasx(event.x))
@@ -138,17 +162,41 @@ class LabelTool:
             # Finalize the bounding box
             x1, x2 = min(self.STATE['x'], x_offset), max(self.STATE['x'], x_offset)
             y1, y2 = min(self.STATE['y'], y_offset), max(self.STATE['y'], y_offset)
-            bbox_id, corner_ids = self.draw_bbox(x1, y1, x2, y2, self.STATE['label_type'])
+            bbox_id, corner_ids  = self.draw_bbox(x1, y1, x2, y2, self.STATE['label_type'])
+
+            if self.STATE['label_type'] == 'object':
+                self.show_object_selection_popup()
+
+            # Add label text under the bounding box
+            label_text = self.STATE['label_tag']  # Use the current label_tag
+            text_x = (x1 + x2) / 2  # Center of the box
+            text_y = max(y1, y2) + 10  # Slightly below the bottom edge of the box
+            offsets = [(-1, -1), (-1, 1), (1, -1), (1, 1)]  # Offsets for the black border
+            for dx, dy in offsets:
+                self.canvas.create_text(
+                    text_x + dx, text_y + dy,
+                    text=label_text,
+                    fill='black',
+                    font=("TkDefaultFont", 12, "bold")
+                )
+
+            # Draw the actual label text in the desired color
+            text_id = self.canvas.create_text(
+                text_x, text_y,
+                text=label_text,
+                fill="white",
+                font=("TkDefaultFont", 12, "bold")
+            )
+
+            # Return both the bbox ID, corner IDs, and text ID
 
             # Save the bounding box and its corner IDs
-            self.bboxList.append((x1, y1, x2, y2))
-            self.bboxTag.append(self.STATE['label_tag'])  # Save the label type
-            self.bboxIdList.append((bbox_id, corner_ids))  # Save both bbox and corners
+            self.bbox_list.append((x1, y1, x2, y2))
+            self.bbox_tag.append(self.STATE['label_tag'])  # Save the label type
+            self.bbox_ids.append((bbox_id, corner_ids, text_id))  # Save both bbox and corners
             self.STATE['click'] = 0
-            self.bboxId = None  # Reset the temporary bbox
+            self.bbox_id = None  # Reset the temporary bbox
 
-            # Show the pop-up for label selection
-            # self.show_label_selection_popup()
 
     def mouse_move(self, event=None):
         # Calculate the scroll offset
@@ -163,14 +211,14 @@ class LabelTool:
         # Update bounding box preview
         if self.STATE['click'] == 1:
             # Remove only the temporary bbox and its corners
-            if self.bboxId:
-                self.canvas.delete(self.bboxId)
+            if self.bbox_id:
+                self.canvas.delete(self.bbox_id)
             if hasattr(self, 'tempCornerIds') and self.tempCornerIds:
                 for corner_id in self.tempCornerIds:
                     self.canvas.delete(corner_id)
 
             # Use draw_bbox to create the temporary bbox and corners
-            self.bboxId, self.tempCornerIds = self.draw_bbox(
+            self.bbox_id, self.tempCornerIds = self.draw_bbox(
                 self.STATE['x'], self.STATE['y'], x_offset, y_offset, self.STATE['label_type']
             )
 
@@ -178,9 +226,9 @@ class LabelTool:
         if self.STATE['click'] == 0:
             return
 
-        if self.bboxId:
-            self.canvas.delete(self.bboxId)
-            self.bboxId = None
+        if self.bbox_id:
+            self.canvas.delete(self.bbox_id)
+            self.bbox_id = None
             self.STATE['click'] = 0
 
     def update_canvas(self, event=None):
@@ -251,6 +299,34 @@ class LabelTool:
 
     def update_image_index_label(self):
         self.image_index_label.configure(text=f"{self.image_index} / {self.total_images}")
+
+    def show_object_selection_popup(self):
+        popup = customtkinter.CTkToplevel(self.parent)
+        popup.title("Select Label")
+        popup.geometry("200x300")
+
+        popup.protocol("WM_DELETE_WINDOW", lambda: None)
+
+        popup.update_idletasks()
+        popup.grab_set()
+
+        label_var = customtkinter.StringVar(value=self.STATE['label_type'])
+        popup_frame = customtkinter.CTkScrollableFrame(popup, width=180, height=200)
+        popup_frame.pack(fill="both", expand=True)
+        customtkinter.CTkLabel(popup_frame, text="Choose a label:").pack(pady=10)
+
+        # Add radio buttons inside the scrollable frame
+        for label in self.object_options:
+            customtkinter.CTkRadioButton(popup_frame, text=label, variable=label_var, value=label).pack(pady=2, padx=10, anchor="w")
+
+        customtkinter.CTkButton(popup_frame, text="OK", command=lambda: self.set_label_from_popup(popup, label_var)).pack(pady=(20, 10))
+
+        popup.wait_window()
+
+    def set_label_from_popup(self, popup, label_var):
+        selected_tag = label_var.get()
+        self.STATE['label_tag'] = selected_tag
+        popup.destroy()
 
     def draw_cursor(self, x, y):
         if self.horizontal_line:
