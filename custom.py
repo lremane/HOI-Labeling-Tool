@@ -27,7 +27,7 @@ class LabelTool:
         )
         self.object_options.sort()
 
-        self.connection_options = (['no_interaction', 'hold'] +
+        self.interaction_options = (['no_interaction', 'hold'] +
                                   ['talk_on', 'text_on'] +
                                   ['drink_with'] +
                                   ['lie_on', 'sit_on'] +
@@ -35,7 +35,7 @@ class LabelTool:
                                   ['read'] +
                                   ['type_on']
         )
-        self.connection_options.sort()
+        self.interaction_options.sort()
 
         # initialize mouse state
         self.STATE = {
@@ -43,16 +43,22 @@ class LabelTool:
             'x': 0,
             'y': 0,
             'label_type': 'person',
-            'label_tag': ''
+            'label_tag': 'person'
         }
 
         annotation = {}
 
         # reference to bbox
-        self.bbox_ids = []
+        self.bbox_ids = [] # (bbox_id, corner_ids, text_id)
         self.bbox_id = None
         self.bbox_list = []
         self.bbox_tag = []
+        self.bbox_type = []
+
+        # interaction management
+        self.selected_objects = []
+        self.interaction_lines = [] #(line_id, [text])
+        self.interactions = []  # To store connections
 
         # mouse-cursor
         self.horizontal_line = None
@@ -119,7 +125,7 @@ class LabelTool:
         self.button_interaction = customtkinter.CTkButton(self.right_frame, text="Interaction  [ I ]", fg_color="orange", hover_color="dark orange", height=70, command=lambda: self.set_label_type("interaction"))
         self.button_interaction.pack(pady=10, padx=10)
 
-        self.button_reset = customtkinter.CTkButton(self.right_frame, text="Reset  [ R ]", fg_color="red", hover_color="dark red", height=70)
+        self.button_reset = customtkinter.CTkButton(self.right_frame, text="Reset  [ R ]", fg_color="red", hover_color="dark red", height=70, command=self.reset)
         self.button_reset.pack(pady=10, padx=10)
 
         # Checkbox
@@ -154,6 +160,10 @@ class LabelTool:
         x_offset = int(self.canvas.canvasx(event.x))
         y_offset = int(self.canvas.canvasy(event.y))
 
+        if self.STATE['label_type'] == 'interaction':
+            self.label_interaction(x_offset, y_offset)
+            return
+
         if self.STATE['click'] == 0:
             # Start a new bounding box
             self.STATE['x'], self.STATE['y'] = x_offset, y_offset
@@ -164,39 +174,50 @@ class LabelTool:
             y1, y2 = min(self.STATE['y'], y_offset), max(self.STATE['y'], y_offset)
             bbox_id, corner_ids  = self.draw_bbox(x1, y1, x2, y2, self.STATE['label_type'])
 
+            self.remove_temporary_bbox()
+
             if self.STATE['label_type'] == 'object':
                 self.show_object_selection_popup()
 
-            # Add label text under the bounding box
-            label_text = self.STATE['label_tag']  # Use the current label_tag
-            text_x = (x1 + x2) / 2  # Center of the box
-            text_y = max(y1, y2) + 10  # Slightly below the bottom edge of the box
-            offsets = [(-1, -1), (-1, 1), (1, -1), (1, 1)]  # Offsets for the black border
-            for dx, dy in offsets:
-                self.canvas.create_text(
-                    text_x + dx, text_y + dy,
-                    text=label_text,
-                    fill='black',
-                    font=("TkDefaultFont", 12, "bold")
-                )
-
-            # Draw the actual label text in the desired color
-            text_id = self.canvas.create_text(
-                text_x, text_y,
-                text=label_text,
-                fill="white",
-                font=("TkDefaultFont", 12, "bold")
-            )
-
-            # Return both the bbox ID, corner IDs, and text ID
+            text_ids = self.draw_label_name(x1, x2, y1, y2)
 
             # Save the bounding box and its corner IDs
             self.bbox_list.append((x1, y1, x2, y2))
+            self.bbox_type.append(self.STATE['label_type'])
             self.bbox_tag.append(self.STATE['label_tag'])  # Save the label type
-            self.bbox_ids.append((bbox_id, corner_ids, text_id))  # Save both bbox and corners
+            self.bbox_ids.append((bbox_id, corner_ids, text_ids))  # Save both bbox and corners
             self.STATE['click'] = 0
             self.bbox_id = None  # Reset the temporary bbox
+            self.tempCornerIds = []
 
+    def draw_label_name(self, x1, x2, y1, y2):
+        label_text = self.STATE['label_tag']  # Use the current label_tag
+        text_x = (x1 + x2) / 2  # Center of the box
+        if self.STATE['label_type'] == 'interaction':
+            text_y = (y1 + y2) // 2
+        else:
+            text_y = max(y1, y2) + 10  # Slightly below the bottom edge of the box
+        offsets = [(-1, -1), (-1, 1), (1, -1), (1, 1)]  # Offsets for the black border
+
+        text_ids = []
+        for dx, dy in offsets:
+            text_id = self.canvas.create_text(
+                text_x + dx, text_y + dy,
+                text=label_text,
+                fill='black',
+                font=("TkDefaultFont", 12, "bold")
+            )
+            text_ids.append(text_id)
+
+        text_id = self.canvas.create_text(
+            text_x, text_y,
+            text=label_text,
+            fill="white",
+            font=("TkDefaultFont", 12, "bold")
+        )
+        text_ids.append(text_id)
+
+        return text_ids
 
     def mouse_move(self, event=None):
         # Calculate the scroll offset
@@ -210,17 +231,20 @@ class LabelTool:
 
         # Update bounding box preview
         if self.STATE['click'] == 1:
-            # Remove only the temporary bbox and its corners
-            if self.bbox_id:
-                self.canvas.delete(self.bbox_id)
-            if hasattr(self, 'tempCornerIds') and self.tempCornerIds:
-                for corner_id in self.tempCornerIds:
-                    self.canvas.delete(corner_id)
+            self.remove_temporary_bbox()
 
             # Use draw_bbox to create the temporary bbox and corners
             self.bbox_id, self.tempCornerIds = self.draw_bbox(
-                self.STATE['x'], self.STATE['y'], x_offset, y_offset, self.STATE['label_type']
-            )
+                self.STATE['x'], self.STATE['y'], x_offset, y_offset, self.STATE['label_type'])
+
+    def remove_temporary_bbox(self):
+        if self.bbox_id:
+            self.canvas.delete(self.bbox_id)
+        if hasattr(self, 'tempCornerIds') and self.tempCornerIds:
+            for corner_id in self.tempCornerIds:
+                self.canvas.delete(corner_id)
+
+
 
     def cancel_bbox(self, event=None):
         if self.STATE['click'] == 0:
@@ -230,6 +254,60 @@ class LabelTool:
             self.canvas.delete(self.bbox_id)
             self.bbox_id = None
             self.STATE['click'] = 0
+
+    def label_interaction(self, x, y):
+        for i, (x1, y1, x2, y2) in enumerate(self.bbox_list):
+            if x1 <= x <= x2 and y1 <= y <= y2:
+                bbox_id, _, _ = self.bbox_ids[i]
+                if bbox_id in self.selected_objects:
+                    self.selected_objects.remove(bbox_id)
+                    self.canvas.itemconfig(bbox_id, fill="",  stipple="")
+                    return
+
+                self.selected_objects.append(bbox_id)
+                label_type = self.bbox_type[i]
+                self.canvas.itemconfig(bbox_id, fill=COLORS[label_type], stipple="gray50")
+
+                if len(self.selected_objects) != 2:
+                    return
+
+                interaction_label = self.get_interaction_label()
+
+                sub = next((index for index, triplet in enumerate(self.bbox_ids) if triplet[0] == self.selected_objects[0]), None)
+                obj = next((index for index, triplet in enumerate(self.bbox_ids) if triplet[0] == self.selected_objects[1]), None)
+
+                center1 = self.get_bbox_center(self.bbox_list[sub])
+                center2 = self.get_bbox_center(self.bbox_list[obj])
+                line_id = self.canvas.create_line(
+                    center1[0], center1[1], center2[0], center2[1], fill="orange", width=4
+                )
+
+                line_text_ids = self.draw_label_name(center1[0], center2[0], center1[1],  center2[1])
+
+                self.interaction_lines.append((line_id, line_text_ids))
+                interaction = {
+                    "object_id": obj,
+                    "interaction": interaction_label,
+                    "subject_id": sub
+                }
+
+
+
+                self.interactions.append(interaction)
+
+                self.reset_label_interaction()
+
+    def get_bbox_center(self, bbox):
+        x1, y1, x2, y2 = bbox
+        x_center = (x1 + x2) / 2
+        y_center = (y1 + y2) / 2
+        return x_center, y_center
+
+    def reset_label_interaction(self):
+        for bbox_id, _, _ in self.bbox_ids:
+            self.canvas.itemconfig(bbox_id, fill="", stipple="")
+
+        self.selected_objects = []
 
     def update_canvas(self, event=None):
         self.canvas.coords(
@@ -297,6 +375,36 @@ class LabelTool:
         self.image_index += 1
         self.load_image()
 
+    def reset(self, event=None):
+        for bbox_id, corner_ids, text_ids in self.bbox_ids:
+            self.canvas.delete(bbox_id)
+            for corner_id in corner_ids:
+                self.canvas.delete(corner_id)
+            for text_id in text_ids:
+                self.canvas.delete(text_id)
+
+        self.bbox_ids = []
+        self.bbox_id = None
+        self.bbox_list = []
+        self.bbox_tag = []
+        self.bbox_type = []
+
+        # interaction management
+        for line, text_ids in self.interaction_lines:
+            self.canvas.delete(line)
+            for text_id in text_ids:
+                self.canvas.delete(text_id)
+
+        self.selected_objects = []
+        self.interaction_lines = []
+        self.interactions = []
+
+    def debug_canvas_items(self):
+        print("Canvas items:")
+        for item_id in self.canvas.find_all():
+            item_type = self.canvas.type(item_id)  # Use `type` to get the type of the canvas item
+            print(f"Item {item_id}: {item_type}")
+
     def update_image_index_label(self):
         self.image_index_label.configure(text=f"{self.image_index} / {self.total_images}")
 
@@ -306,7 +414,6 @@ class LabelTool:
         popup.geometry("200x300")
 
         popup.protocol("WM_DELETE_WINDOW", lambda: None)
-
         popup.update_idletasks()
         popup.grab_set()
 
@@ -322,6 +429,29 @@ class LabelTool:
         customtkinter.CTkButton(popup_frame, text="OK", command=lambda: self.set_label_from_popup(popup, label_var)).pack(pady=(20, 10))
 
         popup.wait_window()
+
+    def get_interaction_label(self):
+        popup = customtkinter.CTkToplevel(self.parent)
+        popup.title("Select Interaction")
+        popup.geometry("200x300")
+
+        popup.protocol("WM_DELETE_WINDOW", lambda: None)
+
+        popup.update_idletasks()
+        popup.grab_set()
+
+        popup_frame = customtkinter.CTkScrollableFrame(popup, width=180, height=200)
+        popup_frame.pack(fill="both", expand=True)
+        customtkinter.CTkLabel(popup_frame, text="Choose a interaction:").pack(pady=10)
+
+        interaction_var = customtkinter.StringVar()
+        for label in self.interaction_options:
+            customtkinter.CTkRadioButton(popup_frame, text=label, variable=interaction_var, value=label).pack(pady=2, padx=10, anchor="w")
+
+        customtkinter.CTkButton(popup_frame, text="OK", command=lambda: self.set_label_from_popup(popup, interaction_var)).pack(pady=(20, 10))
+
+        popup.wait_window()
+        return interaction_var.get()
 
     def set_label_from_popup(self, popup, label_var):
         selected_tag = label_var.get()
