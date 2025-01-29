@@ -409,6 +409,11 @@ class LabelTool:
         self.image_index_label.configure(text=f"{self.image_index} / {self.total_images}")
 
     def show_object_selection_popup(self):
+        def enable_ok_button(*args):
+            """Enable the OK button when a radio button is selected."""
+            if label_var.get():
+                ok_button.configure(state="normal")
+
         popup = customtkinter.CTkToplevel(self.parent)
         popup.title("Select Label")
         popup.geometry("200x300")
@@ -417,16 +422,18 @@ class LabelTool:
         popup.update_idletasks()
         popup.grab_set()
 
-        label_var = customtkinter.StringVar(value=self.STATE['label_type'])
+        label_var = customtkinter.StringVar(value="")
         popup_frame = customtkinter.CTkScrollableFrame(popup, width=180, height=200)
         popup_frame.pack(fill="both", expand=True)
         customtkinter.CTkLabel(popup_frame, text="Choose a label:").pack(pady=10)
 
-        # Add radio buttons inside the scrollable frame
         for label in self.object_options:
-            customtkinter.CTkRadioButton(popup_frame, text=label, variable=label_var, value=label).pack(pady=2, padx=10, anchor="w")
+            radio = customtkinter.CTkRadioButton(popup_frame, text=label, variable=label_var, value=label,
+                                                 command=enable_ok_button)
+            radio.pack(pady=2, padx=10, anchor="w")
 
-        customtkinter.CTkButton(popup_frame, text="OK", command=lambda: self.set_label_from_popup(popup, label_var)).pack(pady=(20, 10))
+        ok_button = customtkinter.CTkButton(popup_frame, text="OK", state="disabled", command=lambda: self.set_label_from_popup(popup, label_var))
+        ok_button.pack(pady=(20, 10))
 
         popup.wait_window()
 
