@@ -9,6 +9,7 @@ import os
 import customtkinter
 
 COLORS = {'person': 'blue', 'object': 'green', 'interaction': 'red'}
+RESIZING_THRESHOLD = 20
 
 class LabelTool:
     def __init__(self, master):
@@ -52,7 +53,14 @@ class LabelTool:
             'x': 0,
             'y': 0,
             'label_type': 'person',
-            'label_tag': 'person'
+            'label_tag': 'person',
+            'dragging': False,
+            'resizing': False,       # Neu
+            'drag_bbox_index': None,
+            'resize_corner': None,   # Neu
+            'drag_start_x': 0,
+            'drag_start_y': 0,
+            'original_bbox': None
         }
 
         # reference to bbox
@@ -100,6 +108,7 @@ class LabelTool:
         # Display mouse cross
         self.canvas.bind("<Button-1>", self.mouse_click)
         self.canvas.bind("<Motion>", self.mouse_move)
+        self.canvas.bind("<ButtonRelease-1>", self.mouse_release)
         self.parent.bind("<Escape>", self.cancel_bbox)  # press <Escape> to cancel current bbox
 
 
@@ -178,31 +187,66 @@ class LabelTool:
             self.label_interaction(x_offset, y_offset)
             return
 
+        # Reset states
+        self.STATE['dragging'] = False
+        self.STATE['resizing'] = False
+
+        # Phase 1: Check for corner resize (10px radius around any corner)
+        closest_distance = float('inf')
+        closest_bbox_index = None
+        closest_corner = None
+
+        # Check all boxes and their corners
+        for idx, bbox in enumerate(self.bbox_coordinates):
+            corners = [
+                (bbox[0], bbox[1]),  # top-left
+                (bbox[0], bbox[3]),  # bottom-left
+                (bbox[2], bbox[1]),  # top-right
+                (bbox[2], bbox[3])  # bottom-right
+            ]
+
+            for corner_idx, (cx, cy) in enumerate(corners):
+                distance = math.dist((x_offset, y_offset), (cx, cy))
+                if distance <= 10 and distance < closest_distance:
+                    closest_distance = distance
+                    closest_bbox_index = idx
+                    closest_corner = corner_idx
+
+        if closest_bbox_index is not None:
+            self.STATE['resizing'] = True
+            self.STATE['resize_corner'] = closest_corner
+            self.STATE['drag_bbox_index'] = closest_bbox_index
+            self.STATE['original_bbox'] = self.bbox_coordinates[closest_bbox_index]
+            self.STATE['drag_start_x'] = x_offset
+            self.STATE['drag_start_y'] = y_offset
+            return
+
+        # Phase 2: Check for box dragging (click inside any box)
+        for idx, bbox in enumerate(self.bbox_coordinates):
+            if bbox[0] <= x_offset <= bbox[2] and bbox[1] <= y_offset <= bbox[3]:
+                self.STATE['dragging'] = True
+                self.STATE['drag_bbox_index'] = idx
+                self.STATE['drag_start_x'] = x_offset
+                self.STATE['drag_start_y'] = y_offset
+                self.STATE['original_bbox'] = bbox
+                return
+
+        # Phase 3: Create new bounding box
         if self.STATE['click'] == 0:
-            # Start a new bounding box
             self.STATE['x'], self.STATE['y'] = x_offset, y_offset
             self.STATE['click'] = 1
         else:
-            # Finalize the bounding box
-            x1, x2 = min(self.STATE['x'], x_offset), max(self.STATE['x'], x_offset)
-            y1, y2 = min(self.STATE['y'], y_offset), max(self.STATE['y'], y_offset)
+            x1, x2 = sorted([self.STATE['x'], x_offset])
+            y1, y2 = sorted([self.STATE['y'], y_offset])
+            self.finalize_bbox(x1, y1, x2, y2)
 
-            self.remove_temporary_bbox()
-
-            if self.STATE['label_type'] == 'object':
-                self.show_object_selection_popup()
-
-            bbox_id, corner_ids, text_ids  = self.draw_bbox_with_label(x1, y1, x2, y2, self.STATE['label_type'], self.STATE['label_tag'])
-
-            # Save the bounding box and its corner IDs
-            self.bbox_coordinates.append((x1, y1, x2, y2))
-            self.bbox_type.append(self.STATE['label_type'])
-            self.bbox_tag.append(self.STATE['label_tag'])  # Save the label type
-            self.bbox_ids.append((bbox_id, corner_ids, text_ids))  # Save both bbox and corners
-            self.STATE['click'] = 0
-            self.bbox_id = None  # Reset the temporary bbox
-            self.temp_corner_ids = []
-
+    def mouse_release(self, event=None):
+        if self.STATE['dragging'] or self.STATE['resizing']:
+            self.STATE['dragging'] = False
+            self.STATE['resizing'] = False
+            self.STATE['drag_bbox_index'] = None
+            self.STATE['resize_corner'] = None
+            self.STATE['original_bbox'] = None
 
     def draw_label_name(self, x1, x2, y1, y2, label_tag):
         label_text = label_tag  # Use the current label_tag
@@ -234,22 +278,186 @@ class LabelTool:
         return text_ids
 
     def mouse_move(self, event=None):
-        # Calculate the scroll offset
         x_offset = self.canvas.canvasx(event.x)
         y_offset = self.canvas.canvasy(event.y)
 
         if not self.current_image:
             return
 
+        # Zeichne Hilfslinien
         self.draw_cursor(x_offset, y_offset)
 
-        # Update bounding box preview
-        if self.STATE['click'] == 1:
-            self.remove_temporary_bbox()
+        # Cursor-Logik ohne vorzeitiges Return
+        if not self.STATE['resizing'] and not self.STATE['dragging']:
+            cursor_near_corner = False
+            current_x = self.canvas.canvasx(event.x)
+            current_y = self.canvas.canvasy(event.y)
 
-            # Use draw bbox to create the temporary bbox and corners
-            self.bbox_id, self.temp_corner_ids = self.draw_bbox(
-                self.STATE['x'], self.STATE['y'], x_offset, y_offset, self.STATE['label_type'])
+            # Überprüfe alle Bounding-Box-Ecken
+            for bbox in self.bbox_coordinates:
+                corners = [
+                    (bbox[0], bbox[1]),
+                    (bbox[0], bbox[3]),
+                    (bbox[2], bbox[1]),
+                    (bbox[2], bbox[3])
+                ]
+                for cx, cy in corners:
+                    if math.dist((current_x, current_y), (cx, cy)) < 15:  # Erhöhter Radius
+                        self.parent.config(cursor="crosshair")  # Ändere Hauptfenster-Cursor
+                        cursor_near_corner = True
+                        break
+                if cursor_near_corner:
+                    break
+
+            if not cursor_near_corner:
+                self.parent.config(cursor="arrow")  # Standard-Cursor
+
+        # Resizing-Logik
+        if self.STATE['resizing']:
+            self.handle_resize(x_offset, y_offset)
+            self.parent.config(cursor="fleur")  # Cursor während Resize
+            return
+
+        # Dragging-Logik
+        if self.STATE['dragging']:
+            self.handle_drag(x_offset, y_offset)
+            self.parent.config(cursor="fleur")  # Cursor während Drag
+            return
+
+        # Bounding-Box-Vorschau
+        if self.STATE['click'] == 1:
+            self.update_bbox_preview(x_offset, y_offset)
+
+    def handle_resize(self, x_offset, y_offset):
+        delta_x = x_offset - self.STATE['drag_start_x']
+        delta_y = y_offset - self.STATE['drag_start_y']
+
+        orig = self.STATE['original_bbox']
+        corner = self.STATE['resize_corner']
+
+        # Calculate new coordinates
+        if corner == 0:  # Top-left
+            new_coords = (orig[0] + delta_x, orig[1] + delta_y, orig[2], orig[3])
+        elif corner == 1:  # Bottom-left
+            new_coords = (orig[0] + delta_x, orig[1], orig[2], orig[3] + delta_y)
+        elif corner == 2:  # Top-right
+            new_coords = (orig[0], orig[1] + delta_y, orig[2] + delta_x, orig[3])
+        else:  # Bottom-right
+            new_coords = (orig[0], orig[1], orig[2] + delta_x, orig[3] + delta_y)
+
+        # Ensure valid coordinates
+        new_coords = (
+            min(new_coords[0], new_coords[2]),
+            min(new_coords[1], new_coords[3]),
+            max(new_coords[0], new_coords[2]),
+            max(new_coords[1], new_coords[3])
+        )
+
+        # Update data and UI
+        idx = self.STATE['drag_bbox_index']
+        self.bbox_coordinates[idx] = new_coords
+        self.update_bbox_ui(idx)
+        self.update_interaction_lines(idx)
+
+    def update_bbox_ui(self, idx):
+        bbox_id, corner_ids, text_ids = self.bbox_ids[idx]
+        x1, y1, x2, y2 = self.bbox_coordinates[idx]
+
+        # Update main rectangle
+        self.canvas.coords(bbox_id, x1, y1, x2, y2)
+
+        # Update corners
+        corners = [
+            (x1, y1), (x1, y2),
+            (x2, y1), (x2, y2)
+        ]
+        for i, corner_id in enumerate(corner_ids):
+            x, y = corners[i]
+            self.canvas.coords(corner_id, x - 5, y - 5, x + 5, y + 5)
+
+        # Update text
+        text_x = (x1 + x2) / 2
+        text_y = max(y1, y2) + 10
+        offsets = [(-1, -1), (-1, 1), (1, -1), (1, 1)]
+        for i in range(4):
+            self.canvas.coords(text_ids[i],
+                               text_x + offsets[i][0],
+                               text_y + offsets[i][1]
+                               )
+        self.canvas.coords(text_ids[4], text_x, text_y)
+
+    def update_interaction_lines(self, bbox_index):
+        for i, interaction in enumerate(self.interactions):
+            if interaction['subject_id'] == bbox_index or interaction['object_id'] == bbox_index:
+                line_id, text_ids = self.interaction_lines[i]
+                sub_bbox = self.bbox_coordinates[interaction['subject_id']]
+                obj_bbox = self.bbox_coordinates[interaction['object_id']]
+
+                # Update line position
+                x1, y1 = self.get_bbox_center(sub_bbox)
+                x2, y2 = self.get_bbox_center(obj_bbox)
+                self.canvas.coords(line_id, x1, y1, x2, y2)
+
+                # Update text position
+                text_x = (x1 + x2) / 2
+                text_y = (y1 + y2) / 2
+                offsets = [(-1, -1), (-1, 1), (1, -1), (1, 1)]
+                for j in range(4):
+                    self.canvas.coords(text_ids[j],
+                                       text_x + offsets[j][0],
+                                       text_y + offsets[j][1]
+                                       )
+                self.canvas.coords(text_ids[4], text_x, text_y)
+
+    def handle_drag(self, x_offset, y_offset):
+        delta_x = x_offset - self.STATE['drag_start_x']
+        delta_y = y_offset - self.STATE['drag_start_y']
+
+        # Calculate new position
+        orig = self.STATE['original_bbox']
+        new_x1 = orig[0] + delta_x
+        new_y1 = orig[1] + delta_y
+        new_x2 = orig[2] + delta_x
+        new_y2 = orig[3] + delta_y
+
+        # Update coordinates
+        idx = self.STATE['drag_bbox_index']
+        self.bbox_coordinates[idx] = (new_x1, new_y1, new_x2, new_y2)
+
+        # Update UI elements
+        self.update_bbox_ui(idx)
+        self.update_interaction_lines(idx)
+
+    def update_bbox_preview(self, x_offset, y_offset):
+        self.remove_temporary_bbox()
+        self.bbox_id, self.temp_corner_ids = self.draw_bbox(
+            self.STATE['x'],
+            self.STATE['y'],
+            x_offset,
+            y_offset,
+            self.STATE['label_type']
+        )
+
+    def finalize_bbox(self, x1, y1, x2, y2):
+        self.remove_temporary_bbox()
+
+        if self.STATE['label_type'] == 'object':
+            self.show_object_selection_popup()
+
+        bbox_id, corner_ids, text_ids = self.draw_bbox_with_label(
+            x1, y1, x2, y2,
+            self.STATE['label_type'],
+            self.STATE['label_tag']
+        )
+
+        self.bbox_coordinates.append((x1, y1, x2, y2))
+        self.bbox_type.append(self.STATE['label_type'])
+        self.bbox_tag.append(self.STATE['label_tag'])
+        self.bbox_ids.append((bbox_id, corner_ids, text_ids))
+
+        self.STATE['click'] = 0
+        self.bbox_id = None
+        self.temp_corner_ids = []
 
     def remove_temporary_bbox(self):
         if self.bbox_id:
@@ -510,7 +718,7 @@ class LabelTool:
     def debug_canvas_items(self):
         print("Canvas items:")
         for item_id in self.canvas.find_all():
-            item_type = self.canvas.type(item_id)  # Use `type` to get the type of the canvas item
+            item_type = self.canvas.type(item_id)  # Use type to get the type of the canvas item
             print(f"Item {item_id}: {item_type}")
 
     def update_image_index_label(self):
