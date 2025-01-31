@@ -12,7 +12,7 @@ COLORS = {'person': 'blue', 'object': 'green', 'interaction': 'red'}
 RESIZING_THRESHOLD = 20
 
 class LabelTool:
-    def __init__(self, master):
+    def __init__(self, master, config_path="config.json"):
         # private variables
         self.parent = master
         self.image_directory = ""
@@ -27,25 +27,12 @@ class LabelTool:
         self.image_name = ""
         self.label_file_name = ""
 
-        self.object_options = (
-                ['cell phone'] +
-                ['cup', 'bottle'] +
-                ['couch'] +
-                ['apple'] +
-                ['book'] +
-                ['laptop']
-        )
-        self.object_options.sort()
+        with open(config_path, "r") as file:
+            config = json.load(file)
 
-        self.interaction_options = (['no_interaction', 'hold'] +
-                                  ['talk_on', 'text_on'] +
-                                  ['drink_with'] +
-                                  ['lie_on', 'sit_on'] +
-                                  ['eat'] +
-                                  ['read'] +
-                                  ['type_on']
-        )
-        self.interaction_options.sort()
+        # Assign and sort
+        self.object_options = sorted(config["objects"])
+        self.interaction_options = sorted(config["interactions"])
 
         # initialize mouse state
         self.STATE = {
@@ -83,6 +70,10 @@ class LabelTool:
         # shortcuts
         self.parent.bind("a", self.prev_image)
         self.parent.bind("f", self.next_image)
+        self.parent.bind("p", lambda event: self.set_label_type("person"))
+        self.parent.bind("o", lambda event: self.set_label_type("object"))
+        self.parent.bind("i", lambda event: self.set_label_type("interaction"))
+        self.parent.bind("r", self.reset)
 
         # Set up the main frame
         self.parent.title('HOI Labeling Tool')
@@ -168,9 +159,6 @@ class LabelTool:
         image_name_without_extension = os.path.splitext(image_name)[0]
         label_name = image_name_without_extension + '.txt'
         return os.path.join(label_directory, label_name)
-
-    def get_checkbox_state(self):
-        print(self.checkbox_var.get())
 
     def set_label_type(self, label_type):
         self.STATE['label_type'] = label_type
@@ -600,7 +588,7 @@ class LabelTool:
 
         self.load_image()
 
-    def load_image(self):
+    def load_image(self, next_or_prev=0):
         image_path = self.image_paths[self.image_index - 1]
         image = Image.open(image_path)
         self.current_image = ImageTk.PhotoImage(image)
@@ -619,7 +607,7 @@ class LabelTool:
 
         self.image_name = Path(image_path).name
         self.label_file_name = self.get_label_file_name(self.image_name, self.label_directory)
-        loading_label_file_name = str(self.label_file_name)
+        loading_label_file_name = self.get_loading_file_name(next_or_prev)
         if not Path(loading_label_file_name).exists():
             return
 
@@ -653,6 +641,19 @@ class LabelTool:
 
             self.interactions.append(interaction)
 
+    def get_loading_file_name(self, next_or_prev):
+        load_prev_annotations = self.checkbox_var.get()
+        if not load_prev_annotations:
+            return str(self.label_file_name)
+
+        prior_image_path = self.image_paths[self.image_index - 1 + next_or_prev] # self.image_index 0 ... - + prev_or_next_anno
+        prior_image_name = Path(prior_image_path).name
+        prior_label_file_name = self.get_label_file_name(prior_image_name, self.label_directory)
+
+        return str(prior_label_file_name)
+
+
+
     def save_image(self):
         data = {
             "file_name": self.image_name,
@@ -680,7 +681,7 @@ class LabelTool:
         self.image_index -= 1
 
         self.reset()
-        self.load_image()
+        self.load_image(1)
 
     def next_image(self, event=None): # noqa
         self.save_image()
@@ -689,7 +690,7 @@ class LabelTool:
         self.image_index += 1
 
         self.reset()
-        self.load_image()
+        self.load_image(-1)
 
     def reset(self, event=None): # noqa
         for bbox_id, corner_ids, text_ids in self.bbox_ids:
@@ -714,12 +715,6 @@ class LabelTool:
         self.selected_objects = []
         self.interaction_lines = []
         self.interactions = []
-
-    def debug_canvas_items(self):
-        print("Canvas items:")
-        for item_id in self.canvas.find_all():
-            item_type = self.canvas.type(item_id)  # Use type to get the type of the canvas item
-            print(f"Item {item_id}: {item_type}")
 
     def update_image_index_label(self):
         self.image_index_label.configure(text=f"{self.image_index} / {self.total_images}")

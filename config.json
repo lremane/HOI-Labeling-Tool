@@ -1,0 +1,23 @@
+{
+  "objects": [
+    "cell phone",
+    "cup",
+    "bottle",
+    "couch",
+    "apple",
+    "book",
+    "laptop"
+  ],
+  "interactions": [
+    "no_interaction",
+    "hold",
+    "talk_on",
+    "text_on",
+    "drink_with",
+    "lie_on",
+    "sit_on",
+    "eat",
+    "read",
+    "type_on"
+  ]
+}
