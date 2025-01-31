@@ -1,6 +1,9 @@
 # HOI Labeling Tool
 This UI the easy creation for labeling Human-Object-Interactions was created while writing my Bachelor Thesis about "..." at ScaDS.AI Dresden/Leipzig.
 
+![Gif of HOI Labeling Tool usage](/images/labeling_example.gif)
+
+
 ## Installtion
 This is a simple python file written with the tkinter frame work.
 ```
