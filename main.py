@@ -154,6 +154,9 @@ class LabelTool:
         self.image_index_label = customtkinter.CTkLabel(self.right_frame, text=f"{self.image_index} / {self.total_images}")
         self.image_index_label.pack(pady=20, padx=10)
 
+        self.export_button = customtkinter.CTkButton(self.right_frame, text="Export", height=50, width=160)
+        self.export_button.pack(pady=(10, 20), padx=10)
+
     @staticmethod
     def get_label_file_name(image_name, label_directory):
         image_name_without_extension = os.path.splitext(image_name)[0]
@@ -184,8 +187,12 @@ class LabelTool:
         closest_bbox_index = None
         closest_corner = None
 
-        # Check all boxes and their corners
+        # Check all boxes and their corners (only current label type)
         for idx, bbox in enumerate(self.bbox_coordinates):
+            # Check if the current bbox type matches the current label type
+            if self.bbox_type[idx] != self.STATE['label_type']:
+                continue  # Skip bboxes of other types
+
             corners = [
                 (bbox[0], bbox[1]),  # top-left
                 (bbox[0], bbox[3]),  # bottom-left
@@ -209,8 +216,11 @@ class LabelTool:
             self.STATE['drag_start_y'] = y_offset
             return
 
-        # Phase 2: Check for box dragging (click inside any box)
+        # Phase 2: Check for box dragging (click inside any box of current type)
         for idx, bbox in enumerate(self.bbox_coordinates):
+            if self.bbox_type[idx] != self.STATE['label_type']:
+                continue  # Skip bboxes of other types
+
             if bbox[0] <= x_offset <= bbox[2] and bbox[1] <= y_offset <= bbox[3]:
                 self.STATE['dragging'] = True
                 self.STATE['drag_bbox_index'] = idx

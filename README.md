@@ -1,51 +1,69 @@
 # HOI Labeling Tool
-This UI the easy creation for labeling Human-Object-Interactions was created while writing my Bachelor Thesis about "..." at ScaDS.AI Dresden/Leipzig.
 
-![Gif of HOI Labeling Tool usage](/images/labeling_example.gif)
+The **HOI Labeling Tool** is a user-friendly interface designed for efficiently labeling **Human-Object Interactions (HOI)**. This tool was developed as part of my Bachelor Thesis at **ScaDS.AI Dresden/Leipzig**.
 
+![HOI Labeling Tool in action](/images/labeling_example.gif)
 
-## Installtion
-This is a simple python file written with the tkinter frame work.
-```
+---
+
+## Installation
+This tool is implemented in Python using the **Tkinter** framework. To install the required dependencies, simply run:
+
+```sh
 pip install -r requirements.txt
 ```
 
+---
+
 ## Usage
-Load images from your specified directory. 
 
-### Step 1: Label Person
-Select Person Button on the right hand side.
-Draw a tight box around each person involved in the interaction.
-In case of labeling error select on of the four vertex of the box and adjust 
-or select the middle boxen of a box and move it in its entirety around.
-Repeat this until all people are labeled.
+The tool enables labeling of people, objects, and their interactions in images. Follow these steps to annotate your data:
 
-### Step 2: Label Object
-Select Object Button below the Person Button the right hand side.
-Draw a tight box around each object involved in the interaction.
-In case of labeling error select on of the four vertex of the box and adjust 
-or select the middle boxen of a box and move it in its entirety around.
-repeat this until all object are labeled.
+### Step 1: Label People
+1. Click the **Person** button on the right-hand side.
+2. Draw a **tight bounding box** around each person involved in the interaction.
+3. To adjust the bounding box:
+   - Drag one of the four vertices to resize it.
+   - Drag the middle of the box to reposition it.
+4. Repeat until all people are labeled.
 
-### Step 3: Label Interaction
-Select the Interaction Button below the Object Button on the right hand side.
-Select the bounding box of a human and then of the object participating the HOI.
-After selecting two Bounding Boxes a pop up will appear for selecting the correct 
-interaction.
-Repeat this until all interactions are labeled.
+### Step 2: Label Objects
+1. Click the **Object** button below the Person button.
+2. Draw a **tight bounding box** around each object involved in the interaction.
+3. Adjust the bounding box as needed using the same method as in Step 1.
+4. Repeat until all objects are labeled.
 
-### Step 4: Next Image
-Now you can move on to the next image. In case you are labeling Date from a Video
-sequence as i have. you can check the checkbox to copy the annotions from the current
-frame to the next or previous frame and just drag and resize to fit the next frame.
+### Step 3: Label Interactions
+1. Click the **Interaction** button below the Object button.
+2. Select the bounding box of a human, then the bounding box of the corresponding object.
+3. A pop-up window will appear for selecting the appropriate interaction type.
+4. Repeat until all interactions are labeled.
+
+### Step 4: Move to the Next Image
+- Click **Next Image** to proceed.
+- If you are labeling frames from a **video sequence**, enable the checkbox to **copy annotations** from the current frame to the next. You can then adjust the bounding boxes accordingly.
+
+---
 
 ## Additional Features
-- All Labeling related Buttons can also be used via shortcut which is also displayed 
-on the button itself
-- in case of mistakes all labels can be removed from the image again with the reset button.
+- **Keyboard Shortcuts:** All labeling actions can be performed using shortcuts, which are displayed on the respective buttons.
+- **Reset Option:** If you make a mistake, you can remove all labels from the current image using the **Reset** button.
 
-## Misc
-- If one wants to change the predifined object and interactions you can use the `config.json`
-file to adjust the list of objects and interactions 
-- The Output Format is in the by ... proposed odgt format. but this repo also in cludes the `odgt_to_hico.py` 
-which can convert the odgt format to the format provided by the authors of the hico-det dataset
+---
+
+## Customization
+- The list of predefined **objects** and **interactions** can be modified in the `config.json` file.
+- The annotations are saved in the **ODGT format** (proposed by [Zou et al.](https://arxiv.org/abs/2103.04503)). The repository also includes `odgt_to_hico.py` to convert ODGT annotations to the format used by the **HICO-DET dataset**.
+
+---
+
+## License & Acknowledgments
+This tool was created as part of my **Bachelor Thesis** at **ScaDS.AI Dresden/Leipzig**. The design and parts of the codebase were heavily inspired by [hoi-det-ui](https://github.com/ywchao/hoi-det-ui) and [BBox-Label-Tool](https://github.com/puzzledqs/BBox-Label-Tool).  
+
+Feel free to modify and extend it as needed.  
+
+For any issues or suggestions, please open an **issue** on this repository.  
+
+Happy labeling! 🎯  
+
+
