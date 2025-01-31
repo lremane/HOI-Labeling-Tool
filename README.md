@@ -13,6 +13,8 @@ This tool is implemented in Python using the **Tkinter** framework. To install t
 pip install -r requirements.txt
 ```
 
+You also need the system package `Tk` library, if not already installed.
+
 ---
 
 ## Usage
@@ -43,6 +45,12 @@ The tool enables labeling of people, objects, and their interactions in images. 
 - Click **Next Image** to proceed.
 - If you are labeling frames from a **video sequence**, enable the checkbox to **copy annotations** from the current frame to the next. You can then adjust the bounding boxes accordingly.
 
+### Step 5: Export Your Labels
+- Click the **Export** button at the bottom of the interface.
+- You will be prompted to choose a location to save the annotations.
+- The annotations will be exported in the **ODGT format**.
+- For details on format conversion, refer to the **Customization** section.
+
 ---
 
 ## Additional Features
@@ -53,7 +61,12 @@ The tool enables labeling of people, objects, and their interactions in images. 
 
 ## Customization
 - The list of predefined **objects** and **interactions** can be modified in the `config.json` file.
-- The annotations are saved in the **ODGT format** (proposed by [Zou et al.](https://arxiv.org/abs/2103.04503)). The repository also includes `odgt_to_hico.py` to convert ODGT annotations to the format used by the **HICO-DET dataset**.
+- The annotations are saved in the **ODGT format** (proposed by [Zou et al.](https://arxiv.org/abs/2103.04503)). More information about the ODGT format can be found [here](https://github.com/bbepoch/HoiTransformer#Annotations).
+- The repository also includes `misc/odgt_to_hico.py` to convert ODGT annotations to the format used by the **HICO-DET dataset**.
+
+```
+python odgt_to_hico.py --input [INPUT_ODGT] --output [OUTPUT_JSON]
+```
 
 ---
 

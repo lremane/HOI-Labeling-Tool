@@ -8,8 +8,11 @@ import glob
 import os
 import customtkinter
 
+from export import export_annotations
+
 COLORS = {'person': 'blue', 'object': 'green', 'interaction': 'red'}
 RESIZING_THRESHOLD = 20
+
 
 class LabelTool:
     def __init__(self, master, config_path="config.json"):
@@ -24,13 +27,12 @@ class LabelTool:
         self.image_width = 0
         self.image_height = 0
 
-        self.image_name = ""
+        self.image_file_name = ""
         self.label_file_name = ""
 
         with open(config_path, "r") as file:
             config = json.load(file)
 
-        # Assign and sort
         self.object_options = sorted(config["objects"])
         self.interaction_options = sorted(config["interactions"])
 
@@ -42,26 +44,26 @@ class LabelTool:
             'label_type': 'person',
             'label_tag': 'person',
             'dragging': False,
-            'resizing': False,       # Neu
+            'resizing': False,
             'drag_bbox_index': None,
-            'resize_corner': None,   # Neu
+            'resize_corner': None,
             'drag_start_x': 0,
             'drag_start_y': 0,
             'original_bbox': None
         }
 
         # reference to bbox
-        self.bbox_ids = [] # (bbox_id, corner_ids, text_id)
+        self.bbox_ids = []  # (bbox_id, corner_ids, text_ids)
         self.bbox_id = None
-        self.bbox_coordinates = [] # (x1, y1, x2, y2) -> prio bboxList
+        self.bbox_coordinates = []  # (x1, y1, x2, y2) -> prio bboxList
         self.bbox_tag = []
         self.bbox_type = []
         self.temp_corner_ids = []
 
         # interaction management
         self.selected_objects = []
-        self.interaction_lines = [] #(line_id, [text])
-        self.interactions = []  # To store connections
+        self.interaction_lines = []  #(line_id, [text])
+        self.interactions = []
 
         # mouse-cursor
         self.horizontal_line = None
@@ -89,8 +91,10 @@ class LabelTool:
 
         # Scrollable canvas setup
         self.canvas = customtkinter.CTkCanvas(self.left_frame, cursor="tcross")
-        self.scrollbar_y = customtkinter.CTkScrollbar(self.left_frame, command=self.canvas.yview, orientation="vertical")
-        self.scrollbar_x = customtkinter.CTkScrollbar(self.left_frame, command=self.canvas.xview, orientation="horizontal")
+        self.scrollbar_y = customtkinter.CTkScrollbar(self.left_frame, command=self.canvas.yview,
+                                                      orientation="vertical")
+        self.scrollbar_x = customtkinter.CTkScrollbar(self.left_frame, command=self.canvas.xview,
+                                                      orientation="horizontal")
         self.canvas.configure(yscrollcommand=self.scrollbar_y.set, xscrollcommand=self.scrollbar_x.set)
         self.scrollbar_y.pack(side="right", fill="y")
         self.scrollbar_x.pack(side="bottom", fill="x")
@@ -102,7 +106,6 @@ class LabelTool:
         self.canvas.bind("<ButtonRelease-1>", self.mouse_release)
         self.parent.bind("<Escape>", self.cancel_bbox)  # press <Escape> to cancel current bbox
 
-
         # Bind the mouse wheel and Shift+Mouse Wheel
         self.canvas.bind("<MouseWheel>", self.on_vertical_scroll)  # For vertical scrolling
         self.canvas.bind("<Shift-MouseWheel>", self.on_horizontal_scroll)  # For horizontal scrolling
@@ -113,48 +116,60 @@ class LabelTool:
         self.canvas.bind("<Button-4>", lambda e: self.canvas.yview_scroll(-1, "units"))
         self.canvas.bind("<Button-5>", lambda e: self.canvas.yview_scroll(1, "units"))
 
-
-        self.placeholder_text = self.canvas.create_text(0, 0, text="Image Display Area", font=("TkDefaultFont", 24), anchor="center")
+        self.placeholder_text = self.canvas.create_text(0, 0, text="Image Display Area", font=("TkDefaultFont", 24),
+                                                        anchor="center")
         self.canvas.bind("<Configure>", self.update_canvas)
 
         # Labeling Buttons
         self.right_frame = customtkinter.CTkScrollableFrame(self.main_frame, width=300)
         self.right_frame.pack(side="right", fill="y")
 
-        self.button_load_dir = customtkinter.CTkButton(self.right_frame, text="Load Directory", height=50, width=160, command=self.load_directory)
+        self.button_load_dir = customtkinter.CTkButton(self.right_frame, text="Load Directory", height=50, width=160,
+                                                       command=self.load_directory)
         self.button_load_dir.pack(pady=(20, 10), padx=10)
 
-        self.button_person = customtkinter.CTkButton(self.right_frame, text="Person  [ P ]", height=70, command=lambda: self.set_label_type("person"))
+        self.button_person = customtkinter.CTkButton(self.right_frame, text="Person  [ P ]", height=70,
+                                                     command=lambda: self.set_label_type("person"))
         self.button_person.pack(pady=(20, 10), padx=10)
 
-        self.button_object = customtkinter.CTkButton(self.right_frame, text="Object  [ O ]", fg_color="green", hover_color="dark green", height=70, command=lambda: self.set_label_type("object"))
+        self.button_object = customtkinter.CTkButton(self.right_frame, text="Object  [ O ]", fg_color="green",
+                                                     hover_color="dark green", height=70,
+                                                     command=lambda: self.set_label_type("object"))
         self.button_object.pack(pady=10, padx=10)
 
-        self.button_interaction = customtkinter.CTkButton(self.right_frame, text="Interaction  [ I ]", fg_color="orange", hover_color="dark orange", height=70, command=lambda: self.set_label_type("interaction"))
+        self.button_interaction = customtkinter.CTkButton(self.right_frame, text="Interaction  [ I ]",
+                                                          fg_color="orange", hover_color="dark orange", height=70,
+                                                          command=lambda: self.set_label_type("interaction"))
         self.button_interaction.pack(pady=10, padx=10)
 
-        self.button_reset = customtkinter.CTkButton(self.right_frame, text="Reset  [ R ]", fg_color="red", hover_color="dark red", height=70, command=self.reset)
+        self.button_reset = customtkinter.CTkButton(self.right_frame, text="Reset  [ R ]", fg_color="red",
+                                                    hover_color="dark red", height=70, command=self.reset)
         self.button_reset.pack(pady=10, padx=10)
 
         # Checkbox
         self.checkbox_var = customtkinter.BooleanVar()
-        self.checkbox = customtkinter.CTkCheckBox(self.right_frame, text="Keep annotations for next image.", variable=self.checkbox_var)
+        self.checkbox = customtkinter.CTkCheckBox(self.right_frame, text="Keep annotations for next image.",
+                                                  variable=self.checkbox_var)
         self.checkbox.pack(pady=10, padx=10)
 
         # Navigation Buttons
         self.navigation_frame = customtkinter.CTkFrame(self.right_frame, fg_color="transparent")
         self.navigation_frame.pack(pady=10, padx=10)
 
-        self.back_button = customtkinter.CTkButton(self.navigation_frame, text="Back  [ A ]", height=50, width=100, command=self.prev_image)
+        self.back_button = customtkinter.CTkButton(self.navigation_frame, text="Back  [ A ]", height=50, width=100,
+                                                   command=self.prev_image)
         self.back_button.pack(side="left", padx=10)
 
-        self.next_button = customtkinter.CTkButton(self.navigation_frame, text="Next  [ F ]", height=50, width=100, command=self.next_image) # todo: maybe this should deactivate automatically
+        self.next_button = customtkinter.CTkButton(self.navigation_frame, text="Next  [ F ]", height=50, width=100,
+                                                   command=self.next_image)
         self.next_button.pack(side="right", padx=10)
 
-        self.image_index_label = customtkinter.CTkLabel(self.right_frame, text=f"{self.image_index} / {self.total_images}")
+        self.image_index_label = customtkinter.CTkLabel(self.right_frame,
+                                                        text=f"{self.image_index} / {self.total_images}")
         self.image_index_label.pack(pady=20, padx=10)
 
-        self.export_button = customtkinter.CTkButton(self.right_frame, text="Export", height=50, width=160)
+        self.export_button = customtkinter.CTkButton(self.right_frame, text="Export", height=50, width=160,
+                                                     command=self.export)
         self.export_button.pack(pady=(10, 20), padx=10)
 
     @staticmethod
@@ -178,20 +193,24 @@ class LabelTool:
             self.label_interaction(x_offset, y_offset)
             return
 
-        # Reset states
         self.STATE['dragging'] = False
         self.STATE['resizing'] = False
 
-        # Phase 1: Check for corner resize (10px radius around any corner)
-        closest_distance = float('inf')
-        closest_bbox_index = None
-        closest_corner = None
+        if self.check_resize_bbox(x_offset, y_offset):
+            return
 
-        # Check all boxes and their corners (only current label type)
+        if self.check_drag_bbox(x_offset, y_offset):
+            return
+
+        self.handle_new_bbox(x_offset, y_offset)
+
+    def check_resize_bbox(self, x_offset, y_offset):
+        closest_distance = float('inf')
+        closest_bbox_index, closest_corner = None, None
+
         for idx, bbox in enumerate(self.bbox_coordinates):
-            # Check if the current bbox type matches the current label type
             if self.bbox_type[idx] != self.STATE['label_type']:
-                continue  # Skip bboxes of other types
+                continue
 
             corners = [
                 (bbox[0], bbox[1]),  # top-left
@@ -203,36 +222,39 @@ class LabelTool:
             for corner_idx, (cx, cy) in enumerate(corners):
                 distance = math.dist((x_offset, y_offset), (cx, cy))
                 if distance <= 10 and distance < closest_distance:
-                    closest_distance = distance
-                    closest_bbox_index = idx
-                    closest_corner = corner_idx
+                    closest_distance, closest_bbox_index, closest_corner = distance, idx, corner_idx
 
         if closest_bbox_index is not None:
-            self.STATE['resizing'] = True
-            self.STATE['resize_corner'] = closest_corner
-            self.STATE['drag_bbox_index'] = closest_bbox_index
-            self.STATE['original_bbox'] = self.bbox_coordinates[closest_bbox_index]
-            self.STATE['drag_start_x'] = x_offset
-            self.STATE['drag_start_y'] = y_offset
-            return
+            self.STATE.update({
+                'resizing': True,
+                'resize_corner': closest_corner,
+                'drag_bbox_index': closest_bbox_index,
+                'original_bbox': self.bbox_coordinates[closest_bbox_index],
+                'drag_start_x': x_offset,
+                'drag_start_y': y_offset
+            })
+            return True
+        return False
 
-        # Phase 2: Check for box dragging (click inside any box of current type)
+    def check_drag_bbox(self, x_offset, y_offset):
         for idx, bbox in enumerate(self.bbox_coordinates):
             if self.bbox_type[idx] != self.STATE['label_type']:
-                continue  # Skip bboxes of other types
+                continue
 
             if bbox[0] <= x_offset <= bbox[2] and bbox[1] <= y_offset <= bbox[3]:
-                self.STATE['dragging'] = True
-                self.STATE['drag_bbox_index'] = idx
-                self.STATE['drag_start_x'] = x_offset
-                self.STATE['drag_start_y'] = y_offset
-                self.STATE['original_bbox'] = bbox
-                return
+                self.STATE.update({
+                    'dragging': True,
+                    'drag_bbox_index': idx,
+                    'drag_start_x': x_offset,
+                    'drag_start_y': y_offset,
+                    'original_bbox': bbox
+                })
+                return True
+        return False
 
-        # Phase 3: Create new bounding box
+    def handle_new_bbox(self, x_offset, y_offset):
         if self.STATE['click'] == 0:
-            self.STATE['x'], self.STATE['y'] = x_offset, y_offset
-            self.STATE['click'] = 1
+            self.STATE['x'], self.STATE['y'], self.STATE['click'] = x_offset, y_offset, 1
         else:
             x1, x2 = sorted([self.STATE['x'], x_offset])
             y1, y2 = sorted([self.STATE['y'], y_offset])
@@ -246,14 +268,14 @@ class LabelTool:
             self.STATE['resize_corner'] = None
             self.STATE['original_bbox'] = None
 
-    def draw_label_name(self, x1, x2, y1, y2, label_tag):
-        label_text = label_tag  # Use the current label_tag
-        text_x = (x1 + x2) / 2  # Center of the box
-        if self.STATE['label_type'] == 'interaction':
+    def draw_label_name(self, x1, y1, x2, y2, label_tag, label_type):
+        label_text = label_tag
+        text_x = (x1 + x2) / 2
+        if label_type == 'interaction':
             text_y = (y1 + y2) // 2
         else:
-            text_y = max(y1, y2) + 10  # Slightly below the bottom edge of the box
-        offsets = [(-1, -1), (-1, 1), (1, -1), (1, 1)]  # Offsets for the black border
+            text_y = max(y1, y2) + 10
+        offsets = [(-1, -1), (-1, 1), (1, -1), (1, 1)]
 
         text_ids = []
         for dx, dy in offsets:
@@ -282,16 +304,13 @@ class LabelTool:
         if not self.current_image:
             return
 
-        # Zeichne Hilfslinien
         self.draw_cursor(x_offset, y_offset)
 
-        # Cursor-Logik ohne vorzeitiges Return
         if not self.STATE['resizing'] and not self.STATE['dragging']:
             cursor_near_corner = False
             current_x = self.canvas.canvasx(event.x)
             current_y = self.canvas.canvasy(event.y)
 
-            # Überprüfe alle Bounding-Box-Ecken
             for bbox in self.bbox_coordinates:
                 corners = [
                     (bbox[0], bbox[1]),
@@ -300,29 +319,26 @@ class LabelTool:
                     (bbox[2], bbox[3])
                 ]
                 for cx, cy in corners:
-                    if math.dist((current_x, current_y), (cx, cy)) < 15:  # Erhöhter Radius
-                        self.parent.config(cursor="crosshair")  # Ändere Hauptfenster-Cursor
+                    if math.dist((current_x, current_y), (cx, cy)) < RESIZING_THRESHOLD:
+                        self.parent.config(cursor="crosshair")
                         cursor_near_corner = True
                         break
                 if cursor_near_corner:
                     break
 
             if not cursor_near_corner:
-                self.parent.config(cursor="arrow")  # Standard-Cursor
+                self.parent.config(cursor="arrow")
 
-        # Resizing-Logik
         if self.STATE['resizing']:
             self.handle_resize(x_offset, y_offset)
-            self.parent.config(cursor="fleur")  # Cursor während Resize
+            self.parent.config(cursor="fleur")
             return
 
-        # Dragging-Logik
         if self.STATE['dragging']:
             self.handle_drag(x_offset, y_offset)
-            self.parent.config(cursor="fleur")  # Cursor während Drag
+            self.parent.config(cursor="fleur")
             return
 
-        # Bounding-Box-Vorschau
         if self.STATE['click'] == 1:
             self.update_bbox_preview(x_offset, y_offset)
 
@@ -333,7 +349,6 @@ class LabelTool:
         orig = self.STATE['original_bbox']
         corner = self.STATE['resize_corner']
 
-        # Calculate new coordinates
         if corner == 0:  # Top-left
             new_coords = (orig[0] + delta_x, orig[1] + delta_y, orig[2], orig[3])
         elif corner == 1:  # Bottom-left
@@ -343,7 +358,6 @@ class LabelTool:
         else:  # Bottom-right
             new_coords = (orig[0], orig[1], orig[2] + delta_x, orig[3] + delta_y)
 
-        # Ensure valid coordinates
         new_coords = (
             min(new_coords[0], new_coords[2]),
             min(new_coords[1], new_coords[3]),
@@ -351,7 +365,6 @@ class LabelTool:
             max(new_coords[1], new_coords[3])
         )
 
-        # Update data and UI
         idx = self.STATE['drag_bbox_index']
         self.bbox_coordinates[idx] = new_coords
         self.update_bbox_ui(idx)
@@ -361,10 +374,8 @@ class LabelTool:
         bbox_id, corner_ids, text_ids = self.bbox_ids[idx]
         x1, y1, x2, y2 = self.bbox_coordinates[idx]
 
-        # Update main rectangle
         self.canvas.coords(bbox_id, x1, y1, x2, y2)
 
-        # Update corners
         corners = [
             (x1, y1), (x1, y2),
             (x2, y1), (x2, y2)
@@ -373,7 +384,6 @@ class LabelTool:
             x, y = corners[i]
             self.canvas.coords(corner_id, x - 5, y - 5, x + 5, y + 5)
 
-        # Update text
         text_x = (x1 + x2) / 2
         text_y = max(y1, y2) + 10
         offsets = [(-1, -1), (-1, 1), (1, -1), (1, 1)]
@@ -391,12 +401,10 @@ class LabelTool:
                 sub_bbox = self.bbox_coordinates[interaction['subject_id']]
                 obj_bbox = self.bbox_coordinates[interaction['object_id']]
 
-                # Update line position
                 x1, y1 = self.get_bbox_center(sub_bbox)
                 x2, y2 = self.get_bbox_center(obj_bbox)
                 self.canvas.coords(line_id, x1, y1, x2, y2)
 
-                # Update text position
                 text_x = (x1 + x2) / 2
                 text_y = (y1 + y2) / 2
                 offsets = [(-1, -1), (-1, 1), (1, -1), (1, 1)]
@@ -411,18 +419,15 @@ class LabelTool:
         delta_x = x_offset - self.STATE['drag_start_x']
         delta_y = y_offset - self.STATE['drag_start_y']
 
-        # Calculate new position
         orig = self.STATE['original_bbox']
         new_x1 = orig[0] + delta_x
         new_y1 = orig[1] + delta_y
         new_x2 = orig[2] + delta_x
         new_y2 = orig[3] + delta_y
 
-        # Update coordinates
         idx = self.STATE['drag_bbox_index']
         self.bbox_coordinates[idx] = (new_x1, new_y1, new_x2, new_y2)
 
-        # Update UI elements
         self.update_bbox_ui(idx)
         self.update_interaction_lines(idx)
 
@@ -464,7 +469,7 @@ class LabelTool:
             for corner_id in self.temp_corner_ids:
                 self.canvas.delete(corner_id)
 
-    def cancel_bbox(self, event=None): # noqa
+    def cancel_bbox(self, event=None):  # noqa
         if self.STATE['click'] == 0:
             return
 
@@ -472,6 +477,10 @@ class LabelTool:
             self.canvas.delete(self.bbox_id)
             self.bbox_id = None
             self.STATE['click'] = 0
+
+        for corner_id in self.temp_corner_ids:
+            self.canvas.delete(corner_id)
+            self.temp_corner_ids = []
 
     def get_closest_bbox_index_at_point(self, x, y):
         candidates = []
@@ -512,7 +521,7 @@ class LabelTool:
 
         if bbox_id in self.selected_objects:
             self.selected_objects.remove(bbox_id)
-            self.canvas.itemconfig(bbox_id, fill="",  stipple="")
+            self.canvas.itemconfig(bbox_id, fill="", stipple="")
             return
 
         self.selected_objects.append(bbox_id)
@@ -523,11 +532,19 @@ class LabelTool:
             return
 
         interaction_label = self.get_interaction_label()
+        if interaction_label == "":
+            self.reset_label_interaction()
+            return
 
-        sub = next((index for index, triplet in enumerate(self.bbox_ids) if triplet[0] == self.selected_objects[0]), None)
-        obj = next((index for index, triplet in enumerate(self.bbox_ids) if triplet[0] == self.selected_objects[1]), None)
+        sub = next((index for index, triplet in enumerate(self.bbox_ids) if triplet[0] == self.selected_objects[0]),
+                   None)
+        obj = next((index for index, triplet in enumerate(self.bbox_ids) if triplet[0] == self.selected_objects[1]),
+                   None)
 
-        line_id, line_text_ids = self.draw_interaction(sub, obj, self.STATE['label_tag'])
+        if self.bbox_type[sub] != "person":
+            sub, obj = obj, sub
+
+        line_id, line_text_ids = self.draw_interaction(sub, obj, self.STATE['label_tag'], self.STATE['label_type'])
         self.interaction_lines.append((line_id, line_text_ids))
         interaction = {
             "object_id": obj,
@@ -539,14 +556,14 @@ class LabelTool:
 
         self.reset_label_interaction()
 
-    def draw_interaction(self, sub_id, obj_id, label_tag):
+    def draw_interaction(self, sub_id, obj_id, label_tag, label_type):
         center1 = self.get_bbox_center(self.bbox_coordinates[sub_id])
         center2 = self.get_bbox_center(self.bbox_coordinates[obj_id])
         line_id = self.canvas.create_line(
             center1[0], center1[1], center2[0], center2[1], fill="orange", width=4
         )
 
-        line_text_ids = self.draw_label_name(center1[0], center2[0], center1[1], center2[1], label_tag)
+        line_text_ids = self.draw_label_name(center1[0], center1[1], center2[0], center2[1], label_tag, label_type)
 
         return line_id, line_text_ids
 
@@ -563,7 +580,7 @@ class LabelTool:
 
         self.selected_objects = []
 
-    def update_canvas(self, event=None): # noqa
+    def update_canvas(self, event=None):  # noqa
         self.canvas.coords(
             self.placeholder_text,
             self.canvas.winfo_width() // 2,
@@ -576,6 +593,14 @@ class LabelTool:
 
     def on_horizontal_scroll(self, event):
         self.canvas.xview_scroll(-1 * (event.delta // 120), "units")
+
+    def export(self, event=None):
+        export_file_path = customtkinter.filedialog.asksaveasfilename(title="Save File As", defaultextension=".odgt",
+                                                                      filetypes=[("Annotation Files", "*.odgt"),
+                                                                                 ("All Files", "*.*")])
+
+        if self.label_directory:
+            export_annotations(self.label_directory, export_file_path)
 
     def load_directory(self):
         self.image_directory = customtkinter.filedialog.askdirectory(title="Select Directory")
@@ -605,18 +630,18 @@ class LabelTool:
         self.image_width = image.width
         self.image_height = image.height
 
-        # Clear existing canvas items
         self.canvas.delete("all")
 
-        # Add image to canvas
         self.canvas.update_idletasks()
         self.canvas.create_image(0, 0, anchor="nw", image=self.current_image)
         self.canvas.config(scrollregion=self.canvas.bbox("all"))
 
         self.update_image_index_label()
 
-        self.image_name = Path(image_path).name
-        self.label_file_name = self.get_label_file_name(self.image_name, self.label_directory)
+        self.image_file_name = Path(image_path).name
+        self.parent.title(f'{self.image_file_name} - HOI Labeling Tool')
+
+        self.label_file_name = self.get_label_file_name(self.image_file_name, self.label_directory)
         loading_label_file_name = self.get_loading_file_name(next_or_prev)
         if not Path(loading_label_file_name).exists():
             return
@@ -629,7 +654,7 @@ class LabelTool:
             x2, y2 = x1 + width - 1, y1 + height - 1
 
             label_type = "person" if gtbox["tag"] == "person" else "object"
-            bbox_id, corner_ids, text_ids  = self.draw_bbox_with_label(x1, y1, x2, y2, label_type, gtbox['tag'])
+            bbox_id, corner_ids, text_ids = self.draw_bbox_with_label(x1, y1, x2, y2, label_type, gtbox['tag'])
 
             self.bbox_coordinates.append((x1, y1, x2, y2))
             self.bbox_type.append(label_type)
@@ -637,11 +662,9 @@ class LabelTool:
             self.bbox_ids.append((bbox_id, corner_ids, text_ids))
 
         for conn in data["hoi"]:
-            sub = conn['subject_id']
-            obj = conn['object_id']
-            interaction = conn['interaction']
+            sub, obj, interaction = conn['subject_id'], conn['object_id'], conn['interaction']
 
-            line_id, line_text_ids = self.draw_interaction(sub, obj, interaction)
+            line_id, line_text_ids = self.draw_interaction(sub, obj, interaction, 'interaction')
             self.interaction_lines.append((line_id, line_text_ids))
             interaction = {
                 "object_id": obj,
@@ -656,17 +679,15 @@ class LabelTool:
         if not load_prev_annotations:
             return str(self.label_file_name)
 
-        prior_image_path = self.image_paths[self.image_index - 1 + next_or_prev] # self.image_index 0 ... - + prev_or_next_anno
+        prior_image_path = self.image_paths[self.image_index - 1 + next_or_prev]
         prior_image_name = Path(prior_image_path).name
         prior_label_file_name = self.get_label_file_name(prior_image_name, self.label_directory)
 
         return str(prior_label_file_name)
 
-
-
     def save_image(self):
         data = {
-            "file_name": self.image_name,
+            "file_name": self.image_file_name,
             "height": self.image_height,
             "width": self.image_width,
             "gtboxes": [
@@ -682,9 +703,9 @@ class LabelTool:
         }
 
         with open(self.label_file_name, 'w', encoding="utf-8") as file:
-            json.dump(data, file) # type: ignore
+            json.dump(data, file)  # type: ignore
 
-    def prev_image(self, event=None): # noqa
+    def prev_image(self, event=None):  # noqa
         self.save_image()
         if self.image_index <= 1:
             return
@@ -693,7 +714,7 @@ class LabelTool:
         self.reset()
         self.load_image(1)
 
-    def next_image(self, event=None): # noqa
+    def next_image(self, event=None):  # noqa
         self.save_image()
         if self.image_index >= self.total_images:
             return
@@ -702,7 +723,7 @@ class LabelTool:
         self.reset()
         self.load_image(-1)
 
-    def reset(self, event=None): # noqa
+    def reset(self, event=None):  # noqa
         for bbox_id, corner_ids, text_ids in self.bbox_ids:
             self.canvas.delete(bbox_id)
             for corner_id in corner_ids:
@@ -716,7 +737,6 @@ class LabelTool:
         self.bbox_tag = []
         self.bbox_type = []
 
-        # interaction management
         for line, text_ids in self.interaction_lines:
             self.canvas.delete(line)
             for text_id in text_ids:
@@ -731,7 +751,6 @@ class LabelTool:
 
     def show_object_selection_popup(self):
         def enable_ok_button():
-            """Enable the OK button when a radio button is selected."""
             if label_var.get():
                 ok_button.configure(state="normal")
 
@@ -753,7 +772,8 @@ class LabelTool:
                                                  command=enable_ok_button)
             radio.pack(pady=2, padx=10, anchor="w")
 
-        ok_button = customtkinter.CTkButton(popup_frame, text="OK", state="disabled", command=lambda: self.set_label_from_popup(popup, label_var))
+        ok_button = customtkinter.CTkButton(popup_frame, text="OK", state="disabled",
+                                            command=lambda: self.set_label_from_popup(popup, label_var))
         ok_button.pack(pady=(20, 10))
 
         popup.wait_window()
@@ -762,8 +782,6 @@ class LabelTool:
         popup = customtkinter.CTkToplevel(self.parent)
         popup.title("Select Interaction")
         popup.geometry("200x300")
-
-        popup.protocol("WM_DELETE_WINDOW", lambda: None)
 
         popup.update_idletasks()
         popup.grab_set()
@@ -774,9 +792,12 @@ class LabelTool:
 
         interaction_var = customtkinter.StringVar()
         for label in self.interaction_options:
-            customtkinter.CTkRadioButton(popup_frame, text=label, variable=interaction_var, value=label).pack(pady=2, padx=10, anchor="w")
+            customtkinter.CTkRadioButton(popup_frame, text=label, variable=interaction_var, value=label).pack(pady=2,
+                                                                                                              padx=10,
+                                                                                                              anchor="w")
 
-        customtkinter.CTkButton(popup_frame, text="OK", command=lambda: self.set_label_from_popup(popup, interaction_var)).pack(pady=(20, 10))
+        customtkinter.CTkButton(popup_frame, text="OK",
+                                command=lambda: self.set_label_from_popup(popup, interaction_var)).pack(pady=(20, 10))
 
         popup.wait_window()
         return interaction_var.get()
@@ -791,27 +812,24 @@ class LabelTool:
             self.canvas.delete(self.horizontal_line)
         self.horizontal_line = self.canvas.create_line(0, y, self.current_image.width(), y, width=2)
 
-        # Update vertical line
         if self.vertical_line:
             self.canvas.delete(self.vertical_line)
         self.vertical_line = self.canvas.create_line(x, 0, x, self.current_image.height(), width=2)
 
     def draw_bbox_with_label(self, x1, y1, x2, y2, label_type, label_tag):
         bbox_id, corner_ids = self.draw_bbox(x1, y1, x2, y2, label_type)
-        text_ids = self.draw_label_name(x1, x2, y1, y2, label_tag)
+        text_ids = self.draw_label_name(x1, y1, x2, y2, label_tag, label_tag)
 
         return bbox_id, corner_ids, text_ids
 
     def draw_bbox(self, x1, y1, x2, y2, label_type):
-        # Draw the main bounding box
         bbox_id = self.canvas.create_rectangle(
             x1, y1, x2, y2,
             width=2,
             outline=COLORS[label_type]
         )
 
-        # Add red rectangles at the corners
-        corner_size = 5  # Size of the corner rectangles
+        corner_size = 5
         corner_ids = []
         for x, y in [
             (x1, y1),
@@ -829,7 +847,7 @@ class LabelTool:
 
 
 if __name__ == '__main__':
-    customtkinter.set_appearance_mode('light')
+    customtkinter.set_appearance_mode('system')
     customtkinter.set_default_color_theme('blue')
 
     root = customtkinter.CTk()
