@@ -1,3 +1,9 @@
+<!--
+SPDX-FileCopyrightText: 2025 2025 lremane
+
+SPDX-License-Identifier: MIT
+-->
+
 # HOI Labeling Tool
 
 The **HOI Labeling Tool** is a user-friendly interface designed for efficiently labeling **Human-Object Interactions (HOI)**. This tool was developed as part of my Bachelor Thesis at **ScaDS.AI Dresden/Leipzig**.
@@ -18,6 +24,11 @@ You also need the system package `Tk` library, if not already installed.
 ---
 
 ## Usage
+After installing the dependencies, you can start the labeling tool by running:
+
+```bash
+python src/app.py
+```
 
 The tool enables labeling of people, objects, and their interactions in images. Follow these steps to annotate your data:
 
@@ -68,6 +79,17 @@ The tool enables labeling of people, objects, and their interactions in images. 
 python odgt_to_hico.py --input [INPUT_ODGT] --output [OUTPUT_JSON]
 ```
 
+---
+## Citation
+
+If you use this tool in your research or publications, please cite the following work:
+```
+@article{remaneErkennungMenschObjektInteraktionenAuf2025,
+  title = {Erkennung von Mensch-Objekt-Interaktionen auf omnidirektionalen Bildaufnahmen},
+  author = {Remane, Marc Laurin},
+  url = {https://nbn-resolving.org/urn:nbn:de:bsz:l189-qucosa2-962682}
+}
+```
 ---
 
 ## License & Acknowledgments

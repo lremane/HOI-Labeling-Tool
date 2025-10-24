@@ -1,2 +1,6 @@
+# SPDX-FileCopyrightText: 2025 2025 lremane
+#
+# SPDX-License-Identifier: MIT
+
 customtkinter~=5.2.2
 pillow~=11.1.0

@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2025 2025 lremane
+#
+# SPDX-License-Identifier: MIT
+
 import json
 import math
 from pathlib import Path
@@ -15,7 +19,7 @@ RESIZING_THRESHOLD = 20
 
 
 class LabelTool:
-    def __init__(self, master, config_path="config.json"):
+    def __init__(self, master, config_path="../config.json"):
         # private variables
         self.parent = master
         self.image_directory = ""

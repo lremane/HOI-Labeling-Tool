@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2025 2025 lremane
+#
+# SPDX-License-Identifier: MIT
+
 hico_classes_originID = {
     "person": 1,
     "bicycle": 2,

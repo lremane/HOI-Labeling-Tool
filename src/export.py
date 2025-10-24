@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2025 2025 lremane
+#
+# SPDX-License-Identifier: MIT
+
 import os
 import glob
 

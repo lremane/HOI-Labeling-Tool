@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2025 2025 lremane
+#
+# SPDX-License-Identifier: MIT
+
 import argparse
 import json
 from hico_classes import hico_classes_originID, hico_name2id
